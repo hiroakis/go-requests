@@ -640,3 +640,90 @@ func TestOptions(t *testing.T) {
 	assert.Equal(t, "GET, POST, PUT, DELETE, PATCH, OPTIONS",
 		resp.Headers().Get("Access-Control-Allow-Methods"), "")
 }
+
+// func TestA(t *testing.T) {
+
+// 	var wg sync.WaitGroup
+
+// 	for n := 0; n < 10; n++ {
+// 		wg.Add(1)
+// 		go func(index int) {
+// 			defer wg.Done()
+// 			param := &url.Values{}
+// 			param.Add("num", fmt.Sprintf("%d", index))
+// 			// b := &bytes.Buffer{}
+// 			r := &RequestParams{
+// 				Data: bytes.NewBufferString(fmt.Sprintf("body=%d", index)),
+// 			}
+// 			if index == 5 {
+// 				r.Auth = &Auth{
+// 					Username: "namename",
+// 					Password: "passpass",
+// 				}
+// 				h := make(http.Header)
+// 				h.Add("xxx", "yyyyyyyy")
+// 				r.Headers = h
+// 			}
+// 			resp, err := Get("https://httpbin.org/anything", param, r)
+// 			if err != nil {
+// 				fmt.Println(err)
+// 			}
+// 			fmt.Println(resp.Text())
+// 		}(n)
+// 	}
+// 	wg.Wait()
+// }
+
+// func TestA(t *testing.T) {
+
+// 	var wg sync.WaitGroup
+
+// 	for n := 0; n < 10; n++ {
+// 		wg.Add(1)
+// 		go func(index int) {
+// 			defer wg.Done()
+// 			param := &url.Values{}
+// 			param.Add("num", fmt.Sprintf("%d", index))
+// 			// b := &bytes.Buffer{}
+// 			r := &RequestParams{
+// 				Data: bytes.NewBufferString(fmt.Sprintf("body=%d", index)),
+// 			}
+// 			if index == 5 {
+// 				r.Auth = &Auth{
+// 					Username: "namename",
+// 					Password: "passpass",
+// 				}
+// 				h := make(http.Header)
+// 				h.Add("xxx", "yyyyyyyy")
+// 				r.Headers = h
+// 			}
+// 			resp, err := Get("https://httpbin.org/anything", param, r)
+// 			if err != nil {
+// 				fmt.Println(err)
+// 			}
+// 			fmt.Println(resp.Text())
+// 		}(n)
+// 	}
+// 	wg.Wait()
+// 	// respCh, errCh := GetAsync("https://httpbin.org/delay/3", p, nil)
+
+// 	// fmt.Println("aaaaaaaaa")
+// 	// fmt.Println("bbbbbbbbb")
+// 	// select {
+// 	// case resp := <-respCh:
+// 	// 	fmt.Println(resp)
+// 	// case err := <-errCh:
+// 	// 	fmt.Println(err)
+// 	// }
+
+// 	// response, err := Get("https://httpbin.org/delay/3", p, nil)
+// 	// if err != nil {
+// 	// 	fmt.Println(err)
+// 	// 	return
+// 	// }
+
+// 	// fmt.Println("aaaaaaaaa")
+// 	// fmt.Println("bbbbbbbbb")
+// 	// fmt.Println(response)
+
+// }

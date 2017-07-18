@@ -68,7 +68,6 @@ func (c *client) newRequest(method, urlStr string, queryString *url.Values, r *R
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", defaultUserAgent)
 	if r != nil {
 		if r.Headers != nil {
 			req.Header = r.Headers
@@ -76,6 +75,9 @@ func (c *client) newRequest(method, urlStr string, queryString *url.Values, r *R
 		if r.Auth != nil {
 			req.SetBasicAuth(r.Auth.Username, r.Auth.Password)
 		}
+	}
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Add("User-Agent", defaultUserAgent)
 	}
 
 	return req, nil
