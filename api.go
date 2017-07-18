@@ -213,12 +213,12 @@ func Patch(urlStr string, queryString *url.Values, r *RequestParams) (Response, 
 
 // PatchAsync makes asynchronous HTTP(s) PATCH request with given urlStr, queryString and RequestParams
 func PatchAsync(urlStr string, queryString *url.Values, r *RequestParams) (chan Response, chan error) {
-	return sendAsync(http.MethodDelete, urlStr, queryString, r)
+	return sendAsync(http.MethodPatch, urlStr, queryString, r)
 }
 
 // Delete makes HTTP(s) DELETE request with given urlStr, queryString and RequestParams
 func Delete(urlStr string, queryString *url.Values, r *RequestParams) (Response, error) {
-	return send(http.MethodPatch, urlStr, queryString, r)
+	return send(http.MethodDelete, urlStr, queryString, r)
 }
 
 // DeleteAsync makes asynchronous HTTP(s) DELETE request with given urlStr, queryString and RequestParams
@@ -236,26 +236,35 @@ func OptionsAsync(urlStr string, queryString *url.Values, r *RequestParams) (cha
 	return sendAsync(http.MethodOptions, urlStr, queryString, r)
 }
 
+// Url returns URL which you requested
 func (resp Response) Url() *url.URL { return resp._url }
 
+// Status returns HTTP response status code
 func (resp Response) StatusCode() int { return resp.statusCode }
 
+// StatusCode returns HTTP response status line
 func (resp Response) Status() string { return resp.status }
 
+// Headers returns HTTP response headers
 func (resp Response) Headers() http.Header { return resp.headers }
 
-func (resp *Response) History() []http.Request { return resp.history }
+// History returns redirect history. If NotAllowRedirect, it returns [].
+func (resp Response) History() []http.Request { return resp.history }
 
+// Text returns HTTP response body in string
 func (resp Response) Text() string { return resp.body.String() }
 
+// Content returns HTTP response body in []byte
 func (resp Response) Content() []byte { return resp.body.Bytes() }
 
+// Raw returns HTTP response body in *bytes.Buffer
 func (resp Response) Raw() *bytes.Buffer { return resp.body }
 
+// Json returns HTTP response body in Json
 func (resp Response) Json(dst interface{}) error {
 	return json.Unmarshal(resp.Content(), dst)
 }
 
 func (resp Response) Len() int64 { return resp.contentLength }
 
-func (resp Response) Cookies() []*http.Cookie { return resp.cookies } // .cookies['requests-is']
+func (resp Response) Cookies() []*http.Cookie { return resp.cookies }

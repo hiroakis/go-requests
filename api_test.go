@@ -2,15 +2,21 @@ package requests
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"encoding/json"
+
+	"bytes"
+
+	"bufio"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -69,6 +75,8 @@ func TestHeadAsync(t *testing.T) {
 		resp Response
 		err  error
 	)
+
+	doneCh := make(chan struct{})
 	go func() {
 		select {
 		case resp = <-respCh:
@@ -88,10 +96,13 @@ func TestHeadAsync(t *testing.T) {
 			// Cookie
 			assert.Equal(t, 0, len(resp.Cookies()), "len(Cookies()) should be 0")
 		case err = <-errCh:
-			t.Errorf("Found error: %s", err.Error())
+			assert.Nil(t, err)
 		}
+		doneCh <- struct{}{}
 	}()
+	<-doneCh
 	assert.Nil(t, err)
+
 }
 
 func TestGet(t *testing.T) {
@@ -104,9 +115,6 @@ func TestGet(t *testing.T) {
 	defer ts.Close()
 
 	resp, err := Get(ts.URL, nil, nil)
-	if err != nil {
-		fmt.Println(err)
-	}
 	assert.Nil(t, err)
 	// Url()
 	assert.Equal(t, ts.URL, resp.Url().Scheme+"://"+resp.Url().Host, "")
@@ -123,6 +131,62 @@ func TestGet(t *testing.T) {
 	assert.Equal(t, "Get Test", resp.Text(), "Response body should contain Get Test")
 	// Cookie
 	assert.Equal(t, 0, len(resp.Cookies()), "len(Cookies()) should be 0")
+}
+
+func TestGetWithQueryString(t *testing.T) {
+	var (
+		val1 string
+		val2 string
+	)
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		val1 = r.FormValue("key1")
+		val2 = r.FormValue("key2")
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Get Test"))
+
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+	qs := &url.Values{}
+	qs.Add("key1", "value1")
+	qs.Add("key2", "value2")
+	resp, err := Get(ts.URL, qs, nil)
+	assert.Nil(t, err)
+	// Url()
+	assert.Equal(t, ts.URL, resp.Url().Scheme+"://"+resp.Url().Host, "")
+	assert.Empty(t, resp.Url().Path, "Requested path should be empty")
+	assert.Equal(t, "value1", val1, "Query String should be empty")
+	assert.Equal(t, "value2", val2, "Query String should be empty")
+	// Status
+	assert.Equal(t, 200, resp.StatusCode(), "Response code should be 200")
+	assert.Equal(t, "200 OK", resp.Status(), "Response status line should be 200 OK")
+	// Header
+	assert.Equal(t, "text/plain", resp.Headers().Get("Content-Type"), "Content-type should be text/plain")
+	// History
+	assert.Equal(t, 0, len(resp.History()), "History should be 0")
+	// Body
+	assert.Equal(t, "Get Test", resp.Text(), "Response body should contain Get Test")
+	// Cookie
+	assert.Equal(t, 0, len(resp.Cookies()), "len(Cookies()) should be 0")
+}
+
+func TestGetWithSpecifiedUserAgent(t *testing.T) {
+	var ua string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ua = r.Header.Get("User-Agent")
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Get Test"))
+
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+	headers := make(http.Header)
+	headers.Add("User-Agent", "Test-UA")
+	_, err := Get(ts.URL, nil, &RequestParams{
+		Headers: headers,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, "Test-UA", ua, "User-Agent should be Test-UA")
 }
 
 func TestGetJson(t *testing.T) {
@@ -176,6 +240,41 @@ func TestGetJson(t *testing.T) {
 	// Cookie
 	assert.Equal(t, 0, len(resp.Cookies()), "len(Cookies()) should be 0")
 }
+
+func TestBindata(t *testing.T) {
+
+	var sizeTestPng int64
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, err := os.Open("testdata/test.png")
+		if err != nil {
+			t.Errorf("Open error: %s", err.Error())
+		}
+		stat, _ := f.Stat()
+		sizeTestPng = stat.Size()
+		defer f.Close()
+
+		reader := bufio.NewReader(f)
+		io.Copy(w, reader)
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	resp, err := Get(ts.URL, nil, nil)
+	assert.Nil(t, err)
+
+	out, err := os.Create("testdata/out.png")
+	assert.Nil(t, err)
+	defer func() {
+		out.Close()
+		os.Remove("testdata/out.png")
+	}()
+
+	io.Copy(out, bufio.NewReader(resp.Raw()))
+	f, _ := os.Open("testdata/out.png")
+	stat, _ := f.Stat()
+	assert.Equal(t, sizeTestPng, stat.Size(), "Should be equal")
+}
+
 func TestGetCookie(t *testing.T) {
 	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{
@@ -319,4 +418,225 @@ func TestConnectTimeout(t *testing.T) {
 	resp, err := Get(ts.URL, nil, r)
 	assert.NotNil(t, err)
 	assert.Empty(t, resp.Raw())
+}
+
+func TestGetAsync(t *testing.T) {
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+		w.Write([]byte("Get Test"))
+
+	})
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	resp, err := GetAsync(ts.URL, nil, nil)
+
+	doneCh := make(chan struct{})
+	var (
+		code  int
+		cType string
+		body  string
+	)
+	go func() {
+		select {
+		case r := <-resp:
+			code = r.StatusCode()
+			cType = r.Headers().Get("Content-Type")
+			body = r.Text()
+		case e := <-err:
+			assert.Nil(t, e)
+		}
+		doneCh <- struct{}{}
+	}()
+	<-doneCh
+	assert.Equal(t, 200, code, "Response code should be 200")
+	assert.Equal(t, "text/plain", cType, "Content-type should be text/plain")
+	// Body
+	assert.Equal(t, "Get Test", body, "Response body should contain Get Test")
+}
+
+// POST
+func TestPost(t *testing.T) {
+	var buf *bytes.Buffer
+	var cType string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := r.Body
+		cType = r.Header.Get("Content-Type")
+		defer body.Close()
+		buf = new(bytes.Buffer)
+		io.Copy(buf, body)
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	headers := make(http.Header)
+	headers.Add("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := Post(ts.URL, nil, &RequestParams{
+		Data:    bytes.NewBufferString("a=b"),
+		Headers: headers,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode(), "")
+	assert.Equal(t, "a=b", buf.String(), "")
+	assert.Equal(t, "application/x-www-form-urlencoded", cType, "")
+}
+
+func TestPostJson(t *testing.T) {
+	type PostData struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	var postData PostData
+	var cType string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cType = r.Header.Get("Content-Type")
+		json.NewDecoder(r.Body).Decode(&postData)
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	headers := make(http.Header)
+	headers.Add("Content-Type", "application/json")
+	resp, err := Post(ts.URL, nil, &RequestParams{
+		Json: PostData{
+			ID:   1,
+			Name: "hiroakis",
+		},
+		Headers: headers,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode(), "Should be 200")
+	assert.Equal(t, 1, postData.ID, "Should be 1")
+	assert.Equal(t, "hiroakis", postData.Name, "Should be hiroakis")
+	assert.Equal(t, "application/json", cType, "Should be application/json")
+}
+
+func TestPut(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := Put(ts.URL, nil, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode(), "Should be 200")
+	assert.Equal(t, "PUT", method, "method should be PUT")
+}
+
+func TestPutAsync(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := PutAsync(ts.URL, nil, nil)
+
+	doneCh := make(chan struct{})
+	var code int
+	var e error
+	go func() {
+		select {
+		case r := <-resp:
+			code = r.StatusCode()
+		case e = <-err:
+		}
+		doneCh <- struct{}{}
+	}()
+	<-doneCh
+	assert.Nil(t, e)
+	assert.Equal(t, 200, code, "Should be 200")
+	assert.Equal(t, "PUT", method, "Method should be PUT")
+}
+
+func TestPatch(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := Patch(ts.URL, nil, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode(), "Should be 200")
+	assert.Equal(t, "PATCH", method, "method should be PATCH")
+}
+
+func TestPatchAsync(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := PatchAsync(ts.URL, nil, nil)
+
+	doneCh := make(chan struct{})
+	var code int
+	var e error
+	go func() {
+		select {
+		case r := <-resp:
+			code = r.StatusCode()
+		case e = <-err:
+		}
+		doneCh <- struct{}{}
+	}()
+	<-doneCh
+	assert.Nil(t, e)
+	assert.Equal(t, 200, code, "Should be 200")
+	assert.Equal(t, "PATCH", method, "Method should be PATCH")
+}
+
+func TestDelete(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := Delete(ts.URL, nil, nil)
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode(), "")
+	assert.Equal(t, "DELETE", method, "method should be DELETE")
+}
+
+func TestDeleteAsync(t *testing.T) {
+	var method string
+	var handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		w.WriteHeader(200)
+	})
+	ts := httptest.NewServer(handler)
+
+	resp, err := DeleteAsync(ts.URL, nil, nil)
+
+	doneCh := make(chan struct{})
+	var code int
+	var e error
+	go func() {
+		select {
+		case r := <-resp:
+			code = r.StatusCode()
+		case e = <-err:
+		}
+		doneCh <- struct{}{}
+	}()
+	<-doneCh
+	assert.Nil(t, e)
+	assert.Equal(t, 200, code, "Should be 200")
+	assert.Equal(t, "DELETE", method, "method should be DELETE")
+}
+
+func TestOptions(t *testing.T) {
+	resp, err := Options("https://httpbin.org", nil, nil)
+	assert.Nil(t, err, "")
+	assert.Equal(t, "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+		resp.Headers().Get("Access-Control-Allow-Methods"), "")
 }
