@@ -70,7 +70,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/hiroakis/go-requests"
+	requests "github.com/hiroakis/go-requests"
 )
 
 func main() {
